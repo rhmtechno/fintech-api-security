@@ -1,0 +1,16 @@
+server:
+  port: 8082
+security:
+  nonce:
+    ttl-seconds: 300
+    allowed-time-drift-seconds: 300
+    hmac-secret: MY_SUPER_SECRET_KEY
+spring:
+  data:
+    redis:
+      host: localhost
+      port: 6379
+  jwt:
+    issuer: gp-nonce-poc
+    secret: VERY_STRONG_JWT_SECRET_256_BITS_MIN
+    access-token-ttl-seconds: 900
