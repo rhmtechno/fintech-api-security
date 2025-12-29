@@ -1,15 +1,15 @@
-
-🔐 Spring Boot Nonce + JWT + Signature Security (Fintech-Grade)
+🔐 Spring Boot Nonce + JWT + Signature + Idempotency Security (Fintech-Grade)
 
 This project demonstrates a real-world, production-grade API security model used in fintech, wallet, and payment systems.
 
 It combines:
-	•	✅ JWT authentication (identity)
-	•	✅ Session-based HMAC signature (request integrity)
-	•	✅ Nonce with Redis (replay attack prevention)
-	•	✅ Device binding
-	•	✅ Centralized JSON error handling
-	•	✅ Spring Security 6 / Spring Boot 3 compatible design
+•	✅ JWT authentication (identity)
+•	✅ Session-based HMAC signature (request integrity)
+•	✅ Nonce with Redis (replay attack prevention)
+•	✅ Idempotency with Redis (duplicate execution prevention)
+•	✅ Device binding
+•	✅ Centralized JSON error handling
+•	✅ Spring Security 6 / Spring Boot 3 compatible design
 
 ⸻
 
@@ -24,28 +24,31 @@ JWT	Who is calling
 Session Key	Can this device sign requests
 Nonce	Is this request new
 Signature	Was the request tampered
-Redis	Scale + TTL + replay tracking
+Idempotency	Was this operation already executed
+Redis	Scale, TTL, replay & idempotency tracking
 
-This project implements all of the above correctly.
+This project implements all of the above correctly, following real fintech patterns.
 
 ⸻
 
 🏗️ Architecture Overview
 
 Client (Mobile / Postman)
- ├─ Authorization: Bearer JWT
- ├─ X-Device-Id
- ├─ X-Nonce
- ├─ X-Timestamp
- ├─ X-Signature
- ↓
+├─ Authorization: Bearer JWT
+├─ X-Device-Id
+├─ X-Nonce
+├─ X-Timestamp
+├─ X-Signature
+├─ Idempotency-Key
+↓
 Spring Security Filter Chain
- ├─ JwtAuthenticationFilter      (identity)
- ├─ NonceSecurityFilter          (replay + integrity)
- ↓
+├─ JwtAuthenticationFilter        (identity)
+├─ NonceSecurityFilter            (replay + integrity)
+├─ IdempotencyFilter              (duplicate execution prevention)
+↓
 Controllers
- ↓
-Redis (nonce + session keys)
+↓
+Redis (session keys + nonces + idempotency keys)
 
 
 ⸻
@@ -60,9 +63,9 @@ X-Device-Id: device-abc
 Response:
 
 {
-  "accessToken": "JWT",
-  "sessionKey": "temporary-session-key",
-  "expiresIn": 900
+"accessToken": "JWT",
+"sessionKey": "temporary-session-key",
+"expiresIn": 900
 }
 
 	•	JWT → identity
@@ -71,7 +74,7 @@ Response:
 
 ⸻
 
-2️⃣ Secure API Call
+2️⃣ Secure & Idempotent API Call
 
 POST /api/payments/execute
 Authorization: Bearer <JWT>
@@ -79,18 +82,22 @@ X-Device-Id: device-abc
 X-Nonce: uuid
 X-Timestamp: epoch_seconds
 X-Signature: base64_hmac
+Idempotency-Key: uuid
 
 
 ⸻
 
 3️⃣ Backend Validation Order
-	1.	Validate JWT
-	2.	Fetch session key from Redis
-	3.	Validate timestamp drift
-	4.	Check nonce replay (Redis)
-	5.	Verify HMAC signature
-	6.	Store nonce (TTL)
-	7.	Execute business logic
+1.	Validate JWT
+2.	Fetch session key from Redis
+3.	Validate timestamp drift
+4.	Check nonce replay (Redis)
+5.	Verify HMAC signature
+6.	Check idempotency key
+7.	Acquire idempotency lock
+8.	Execute business logic
+9.	Store final response for idempotency
+10.	Store nonce (TTL)
 
 ⸻
 
@@ -117,13 +124,40 @@ Base64( HMAC_SHA256(sessionKey, payload) )
 
 ⸻
 
+🔁 Idempotency (Very Important for Payments)
+
+Idempotency ensures:
+
+Retrying the same request does NOT cause duplicate execution.
+
+How it works
+•	Client generates a unique Idempotency-Key per business operation
+•	Backend stores execution state in Redis
+•	Same key → same response
+•	Concurrent requests → only one executes
+
+Redis key format
+
+idem:{userId}:{endpoint}:{idempotencyKey}
+
+Redis values
+
+Value	Meaning
+IN_PROGRESS	Request is being processed
+JSON response	Request already completed
+
+TTL:
+•	24 hours (configurable)
+
+⸻
+
 🧰 Tech Stack
-	•	Java 17+
-	•	Spring Boot 3.x
-	•	Spring Security 6
-	•	Redis
-	•	JWT (jjwt)
-	•	Lombok
+•	Java 17+
+•	Spring Boot 3.x
+•	Spring Security 6
+•	Redis
+•	JWT (jjwt)
+•	Lombok
 
 ⸻
 
@@ -139,10 +173,10 @@ docker run -d --name redis -p 6379:6379 redis:7.2-alpine
 2️⃣ Configure Application
 
 spring:
-  data:
-    redis:
-      host: localhost
-      port: 6379
+data:
+redis:
+host: localhost
+port: 6379
 
 
 ⸻
@@ -162,8 +196,8 @@ POST http://localhost:8080/auth/login
 X-Device-Id: device-abc
 
 Save:
-	•	accessToken
-	•	sessionKey (for signing)
+•	accessToken
+•	sessionKey
 
 ⸻
 
@@ -175,7 +209,7 @@ Authorization: Bearer <JWT>
 
 ⸻
 
-Secure API Call
+Secure & Idempotent API Call
 
 POST /api/payments/execute
 Authorization: Bearer <JWT>
@@ -183,32 +217,43 @@ X-Device-Id: device-abc
 X-Nonce: uuid
 X-Timestamp: epoch
 X-Signature: signature
+Idempotency-Key: uuid
 
 
 ⸻
 
-❌ Replay Attack Example
+❌ Replay & Duplicate Examples
 
-Reusing the same nonce:
+Replay attack (same nonce)
 
 {
-  "code": "REPLAY_ATTACK",
-  "message": "Replay attack detected",
-  "timestamp": "2025-01-10T19:45:22Z",
-  "path": "/api/payments/execute"
+"code": "REPLAY_ATTACK",
+"message": "Replay attack detected",
+"timestamp": "2025-01-10T19:45:22Z",
+"path": "/api/payments/execute"
+}
+
+Duplicate execution attempt (same Idempotency-Key)
+
+{
+"code": "IDEMPOTENT_REQUEST_IN_PROGRESS",
+"message": "Request is already being processed",
+"timestamp": "2025-01-10T19:45:22Z",
+"path": "/api/payments/execute"
 }
 
 
 ⸻
 
 ⚠️ Important Notes
-	•	/internal/** endpoints are for POC/testing only
-	•	Never expose signature-generation APIs in production
-	•	Mobile apps must store session keys in:
-	•	Android Keystore
-	•	iOS Secure Enclave
-	•	Session keys are short-lived
-	•	JWT access tokens must expire
+•	/internal/** endpoints are POC/testing only
+•	Never expose signature-generation APIs in production
+•	Mobile apps must store session keys in:
+•	Android Keystore
+•	iOS Secure Enclave
+•	Session keys are short-lived
+•	JWT access tokens must expire
+•	Idempotency-Key must be reused on retries
 
 ⸻
 
@@ -217,43 +262,42 @@ Reusing the same nonce:
 All errors return consistent JSON:
 
 {
-  "code": "INVALID_SIGNATURE",
-  "message": "Signature verification failed",
-  "timestamp": "2025-01-10T19:45:22Z",
-  "path": "/api/payments/execute"
+"code": "INVALID_SIGNATURE",
+"message": "Signature verification failed",
+"timestamp": "2025-01-10T19:45:22Z",
+"path": "/api/payments/execute"
 }
 
 Handled via:
-	•	Custom SecurityViolationException
-	•	@RestControllerAdvice
-	•	HandlerExceptionResolver for filters
+•	SecurityViolationException
+•	@RestControllerAdvice
+•	HandlerExceptionResolver for filters
 
 ⸻
 
 🧱 Real-World Use Cases
 
 This pattern is used in:
-	•	Wallet backends
-	•	Payment gateways
-	•	Banking APIs
-	•	Open Banking / PSD2
-	•	Internal fintech microservices
+•	Wallet backends
+•	Payment gateways
+•	Banking APIs
+•	Open Banking / PSD2
+•	Internal fintech microservices
 
 ⸻
 
 🚀 Possible Enhancements
-	•	Idempotency-Key for payments
-	•	Request body hash in signature
-	•	Refresh token flow
-	•	Rate limiting with Redis
-	•	Key rotation
-	•	Device fingerprinting
+•	Request body hash in signature
+•	Refresh token flow
+•	Rate limiting with Redis
+•	Key rotation
+•	Device fingerprinting
+•	Risk-based authentication
 
 ⸻
 
 📜 License
 
-MIT (or update as needed)
 
 ⸻
 
@@ -261,4 +305,3 @@ MIT (or update as needed)
 
 Built as a learning + reference implementation
 for real-world API security, not tutorials.
-
