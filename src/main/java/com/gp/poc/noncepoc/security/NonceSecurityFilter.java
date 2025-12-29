@@ -9,6 +9,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,7 +23,6 @@ import java.time.Instant;
 import java.util.Base64;
 
 @Component
-@RequiredArgsConstructor
 public class NonceSecurityFilter extends OncePerRequestFilter {
 
     private final RedisNonceService nonceService;
@@ -31,6 +31,15 @@ public class NonceSecurityFilter extends OncePerRequestFilter {
 
     @Value("${security.nonce.ttl-seconds:300}")
     private long nonceTtlSeconds;
+
+    public NonceSecurityFilter(RedisNonceService nonceService,
+                               SessionKeyService sessionKeyService,
+                                @Qualifier("handlerExceptionResolver")
+                               HandlerExceptionResolver handlerExceptionResolver) {
+        this.nonceService = nonceService;
+        this.sessionKeyService = sessionKeyService;
+        this.handlerExceptionResolver = handlerExceptionResolver;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {

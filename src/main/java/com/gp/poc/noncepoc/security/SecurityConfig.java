@@ -14,6 +14,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
     private final NonceSecurityFilter nonceFilter;
+    private final IdempotencyFilter idempotencyFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http)
@@ -32,6 +33,10 @@ public class SecurityConfig {
                 .addFilterAfter(
                         nonceFilter,
                         JwtAuthenticationFilter.class
+                )
+                .addFilterAfter(
+                        idempotencyFilter,
+                        NonceSecurityFilter.class
                 )
 
                 .authorizeHttpRequests(auth -> auth
