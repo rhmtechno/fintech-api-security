@@ -9,7 +9,7 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.gp.poc</groupId>
-    <artifactId>noncePoc</artifactId>
+    <artifactId>fintech-api-security</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>noncePoc</name>
     <description>noncePoc</description>
