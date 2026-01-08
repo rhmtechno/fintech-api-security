@@ -10,9 +10,19 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RedisConfig {
 
     @Bean
+    public io.github.bucket4j.distributed.proxy.ProxyManager<byte[]> lettuceProxyManager(
+            RedisConnectionFactory connectionFactory) {
+        io.lettuce.core.RedisClient redisClient = (io.lettuce.core.RedisClient) ((org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory) connectionFactory)
+                .getNativeClient();
+        return io.github.bucket4j.redis.lettuce.cas.LettuceBasedProxyManager.builderFor(redisClient)
+                .withExpirationStrategy(io.github.bucket4j.distributed.ExpirationAfterWriteStrategy
+                        .basedOnTimeForRefillingBucketUpToMax(java.time.Duration.ofSeconds(60)))
+                .build();
+    }
+
+    @Bean
     public RedisTemplate<String, String> redisTemplate(
-            RedisConnectionFactory connectionFactory
-    ) {
+            RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, String> template = new RedisTemplate<>();
         template.setConnectionFactory(connectionFactory);
         template.setKeySerializer(new StringRedisSerializer());

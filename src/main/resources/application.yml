@@ -5,6 +5,17 @@ security:
     ttl-seconds: 300
     allowed-time-drift-seconds: 300
     hmac-secret: MY_SUPER_SECRET_KEY
+  rate-limit:
+    enabled: true
+    default-policy:
+      capacity: 10
+      refill-tokens: 10
+      refill-duration-seconds: 60
+    policies:
+      auth:
+        capacity: 5
+        refill-tokens: 5
+        refill-duration-seconds: 60
 spring:
   data:
     redis:
